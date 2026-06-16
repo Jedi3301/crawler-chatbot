@@ -6,4 +6,4 @@ groq
 firecrawl-py
 supabase
 sentence-transformers
-pinecone-client
+pinecone
