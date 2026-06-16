@@ -16,10 +16,11 @@ import { ingestWebsite } from "@/lib/api";
 import type { IngestResponse } from "@/lib/types";
 
 interface Props {
-  onIngestComplete: () => void; // called after a successful ingest
+  botId: string;
+  onIngestComplete: () => void;
 }
 
-export default function UrlIngester({ onIngestComplete }: Props) {
+export default function UrlIngester({ botId, onIngestComplete }: Props) {
   const [url, setUrl] = useState("");
   const [limit, setLimit] = useState(20);
   const [loading, setLoading] = useState(false);
@@ -35,7 +36,7 @@ export default function UrlIngester({ onIngestComplete }: Props) {
     setResult(null);
 
     try {
-      const res = await ingestWebsite({ url: url.trim(), limit });
+      const res = await ingestWebsite({ url: url.trim(), limit, bot_id: botId });
       setResult(res);
       onIngestComplete();
     } catch (err) {

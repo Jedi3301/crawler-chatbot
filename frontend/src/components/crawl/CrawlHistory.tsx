@@ -13,9 +13,11 @@ import type { CrawlJob } from "@/lib/types";
 
 interface Props {
   refreshTrigger: number; // increment this to force a re-fetch
+  activeBotId?: string;
+  onSelectBot?: (bot: CrawlJob) => void;
 }
 
-export default function CrawlHistory({ refreshTrigger }: Props) {
+export default function CrawlHistory({ refreshTrigger, activeBotId, onSelectBot }: Props) {
   const [jobs, setJobs] = useState<CrawlJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,32 +59,53 @@ export default function CrawlHistory({ refreshTrigger }: Props) {
     <div className="history" aria-label="Crawl history">
       <h2 className="history__title">Ingested Sites</h2>
       <ul className="history__list" role="list">
-        {jobs.map((job) => (
-          <li key={job.id} className="history__item">
-            <div className="history__item-meta">
-              <span className="history__item-status history__item-status--completed">
-                ✓
-              </span>
-              <span className="history__item-pages">{job.total_pages} pages</span>
-            </div>
-            <a
-              href={job.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="history__item-url"
-              title={job.url}
-            >
-              {job.url}
-            </a>
-            <time className="history__item-date" dateTime={job.created_at}>
-              {new Date(job.created_at).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </time>
-          </li>
-        ))}
+        {jobs.map((job) => {
+          const isActive = job.id === activeBotId;
+          return (
+            <li key={job.id} className={`history__item ${isActive ? 'history__item--active' : ''}`} style={isActive ? { borderLeft: "3px solid #000", paddingLeft: "13px" } : {}}>
+              <div className="history__item-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span className="history__item-status history__item-status--completed">
+                    ✓
+                  </span>
+                  <span className="history__item-pages">{job.total_pages} pages</span>
+                </div>
+                {onSelectBot && (
+                  <button 
+                    onClick={() => onSelectBot(job)}
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: "12px",
+                      borderRadius: "12px",
+                      backgroundColor: isActive ? "#000" : "#e5e5e5",
+                      color: isActive ? "#fff" : "#000",
+                      border: "none",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {isActive ? "Chatting..." : "Chat"}
+                  </button>
+                )}
+              </div>
+              <a
+                href={job.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="history__item-url"
+                title={job.url}
+              >
+                {job.url}
+              </a>
+              <time className="history__item-date" dateTime={job.created_at}>
+                {new Date(job.created_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </time>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

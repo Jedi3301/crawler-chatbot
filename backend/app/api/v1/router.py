@@ -10,10 +10,11 @@ To add a new feature:
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import crawler, ingest, chat
+from app.api.v1.routes import crawler, ingest, chat, bots
 
 api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(crawler.router)
 api_router.include_router(ingest.router)
 api_router.include_router(chat.router)
+api_router.include_router(bots.router)

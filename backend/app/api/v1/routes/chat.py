@@ -27,27 +27,20 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
     "/message",
     response_model=ChatResponse,
     status_code=status.HTTP_200_OK,
-    summary="Ask a question about crawled websites",
-    description=(
-        "Answers a question using RAG (Retrieval-Augmented Generation):\n"
-        "1. Embeds the question.\n"
-        "2. Retrieves the most relevant chunks from Pinecone.\n"
-        "3. Passes them as context to Groq's `llama-3.3-70b-versatile`.\n"
-        "4. Returns the answer + source URLs.\n\n"
-        "Make sure to run `/ingest/ingest` on a website first."
-    ),
+    summary="Ask a question about the crawled websites",
 )
 def send_message(body: ChatRequest) -> ChatResponse:
     """Runs the RAG pipeline and returns an LLM-generated answer."""
     try:
         return chat_service.answer_question(
             question=body.question,
+            bot_id=body.bot_id,
             history=body.history,
         )
     except EmbeddingError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
+            detail=f"Failed to embed question: {exc}",
         )
     except VectorStoreError as exc:
         raise HTTPException(

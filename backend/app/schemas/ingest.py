@@ -15,15 +15,17 @@ class IngestRequest(BaseModel):
     Request body for POST /ingest/ingest.
 
     Attributes:
-        url:   Root URL to crawl recursively.
-        limit: Max pages Firecrawl will visit.
+        url:    Root URL to crawl recursively.
+        bot_id: The ID of the bot this knowledge belongs to.
+        limit:  Max pages Firecrawl will visit.
     """
-    url: HttpUrl = Field(..., examples=["https://example.com"])
+    url: HttpUrl = Field(..., description="The root URL to crawl and ingest.")
+    bot_id: str = Field(..., description="The ID of the bot this knowledge belongs to.")
     limit: int = Field(
         default=50,
         ge=1,
         le=200,
-        description="Max pages to crawl (1–200). Keep low on the free plan.",
+        description="Maximum number of pages to crawl.",
     )
 
 

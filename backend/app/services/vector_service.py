@@ -64,6 +64,7 @@ def upsert_chunks(
     chunks_with_vectors: list[tuple[str, list[float]]],
     page_url: str,
     crawl_job_id: str,
+    namespace: str | None = None,
 ) -> int:
     """
     Stores embedded text chunks into Pinecone.
@@ -77,6 +78,7 @@ def upsert_chunks(
                              from embedding_service.chunk_and_embed().
         page_url:            The URL the chunk was extracted from.
         crawl_job_id:        Links this chunk back to its Supabase crawl job.
+        namespace:           The Pinecone namespace to isolate vectors by bot.
 
     Returns:
         Number of vectors upserted.
@@ -108,9 +110,9 @@ def upsert_chunks(
     try:
         for i in range(0, len(vectors), _UPSERT_BATCH_SIZE):
             batch = vectors[i : i + _UPSERT_BATCH_SIZE]
-            index.upsert(vectors=batch)
+            index.upsert(vectors=batch, namespace=namespace)
             total_upserted += len(batch)
-            logger.debug("Upserted batch of %d vectors", len(batch))
+            logger.debug("Upserted batch of %d vectors to namespace %s", len(batch), namespace)
     except Exception as exc:
         logger.exception("Pinecone upsert failed")
         raise VectorStoreError(str(exc)) from exc
@@ -128,6 +130,7 @@ def upsert_chunks(
 def query_similar_chunks(
     query_vector: list[float],
     top_k: int = _DEFAULT_TOP_K,
+    namespace: str | None = None,
 ) -> list[dict]:
     """
     Finds the most semantically similar chunks to the query vector.
@@ -138,6 +141,7 @@ def query_similar_chunks(
     Args:
         query_vector: Embedding of the user's question (384 floats).
         top_k:        Number of chunks to return.
+        namespace:    The specific bot's namespace to search within.
 
     Returns:
         List of dicts, each with keys: 'text', 'url', 'score'.
@@ -152,6 +156,7 @@ def query_similar_chunks(
             vector=query_vector,
             top_k=top_k,
             include_metadata=True,
+            namespace=namespace,
         )
     except Exception as exc:
         logger.exception("Pinecone query failed")

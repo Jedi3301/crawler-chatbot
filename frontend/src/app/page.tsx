@@ -12,35 +12,37 @@
 
 import { useState } from "react";
 import GlobalNav from "@/components/layout/GlobalNav";
-import UrlIngester from "@/components/crawl/UrlIngester";
-import CrawlHistory from "@/components/crawl/CrawlHistory";
-import ChatInterface from "@/components/chat/ChatInterface";
+import BotList from "@/components/bots/BotList";
+import CreateBotModal from "@/components/bots/CreateBotModal";
 
 export default function Home() {
-  // Incrementing this number triggers a re-fetch in CrawlHistory
   const [historyTick, setHistoryTick] = useState(0);
+  const [isCreatingBot, setIsCreatingBot] = useState(false);
 
-  function onIngestComplete() {
+  function triggerBotRefresh() {
     setHistoryTick((t) => t + 1);
   }
 
   return (
-    <>
+    <div style={{ minHeight: "100vh", backgroundColor: "#fafafa" }}>
       <GlobalNav />
 
-      <main className="split-screen">
-        {/* ── Left: ingest + history ───────────────────────────────── */}
-        <div className="split-screen__left">
-          <UrlIngester onIngestComplete={onIngestComplete} />
-          <div className="split-screen__divider" aria-hidden="true" />
-          <CrawlHistory refreshTrigger={historyTick} />
-        </div>
-
-        {/* ── Right: chat ──────────────────────────────────────────── */}
-        <div className="split-screen__right">
-          <ChatInterface />
-        </div>
+      <main style={{ paddingTop: "60px" }}>
+        <BotList 
+          refreshTrigger={historyTick} 
+          onCreateClick={() => setIsCreatingBot(true)}
+        />
       </main>
-    </>
+
+      {isCreatingBot && (
+        <CreateBotModal 
+          onClose={() => setIsCreatingBot(false)}
+          onSuccess={() => {
+            setIsCreatingBot(false);
+            triggerBotRefresh();
+          }}
+        />
+      )}
+    </div>
   );
 }

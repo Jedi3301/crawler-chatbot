@@ -89,6 +89,7 @@ def _build_groq_messages(
 
 def answer_question(
     question: str,
+    bot_id: str,
     history: list[ChatMessage],
 ) -> ChatResponse:
     """
@@ -103,6 +104,7 @@ def answer_question(
 
     Args:
         question: The user's natural language question.
+        bot_id:   The ID of the bot/website context to query against.
         history:  Previous conversation turns (user + assistant messages).
 
     Returns:
@@ -114,7 +116,7 @@ def answer_question(
         ChatError:        If the Groq API call fails.
     """
     settings = get_settings()
-    logger.info("Processing chat question: %.80s", question)
+    logger.info("Processing chat question for bot_id %s: %.80s", bot_id, question)
 
     # Step 1: Embed the question
     try:
@@ -124,7 +126,7 @@ def answer_question(
 
     # Step 2: Retrieve relevant chunks
     try:
-        raw_chunks = vector_service.query_similar_chunks(query_vector, top_k=5)
+        raw_chunks = vector_service.query_similar_chunks(query_vector, top_k=5, namespace=bot_id)
     except VectorStoreError:
         raise
 

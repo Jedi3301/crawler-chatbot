@@ -14,6 +14,7 @@ import type {
   CrawlJob,
   ChatRequest,
   ChatResponse,
+  Bot,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -47,25 +48,40 @@ async function apiFetch<T>(
 }
 
 // -------------------------------------------------------------------------- //
+//  Bots
+// -------------------------------------------------------------------------- //
+
+export async function createBot(name: string, description?: string): Promise<Bot> {
+  return apiFetch<Bot>("/api/v1/bots", {
+    method: "POST",
+    body: JSON.stringify({ name, description }),
+  });
+}
+
+export async function getBots(): Promise<Bot[]> {
+  return apiFetch<Bot[]>("/api/v1/bots");
+}
+
+export async function getBot(botId: string): Promise<Bot> {
+  return apiFetch<Bot>(`/api/v1/bots/${botId}`);
+}
+
+export async function getBotKnowledge(botId: string): Promise<CrawlJob[]> {
+  return apiFetch<CrawlJob[]>(`/api/v1/bots/${botId}/knowledge`);
+}
+
+// -------------------------------------------------------------------------- //
 //  Ingest
 // -------------------------------------------------------------------------- //
 
 /**
- * Crawl a website and store its embeddings in Pinecone.
- * This can take a minute or more depending on the site size.
+ * Crawl a website and store its embeddings in Pinecone for a specific bot.
  */
 export async function ingestWebsite(body: IngestRequest): Promise<IngestResponse> {
   return apiFetch<IngestResponse>("/api/v1/ingest/ingest", {
     method: "POST",
     body: JSON.stringify(body),
   });
-}
-
-/**
- * Fetch the list of previously crawled sites from Supabase.
- */
-export async function getCrawlHistory(): Promise<CrawlJob[]> {
-  return apiFetch<CrawlJob[]>("/api/v1/ingest/history");
 }
 
 // -------------------------------------------------------------------------- //

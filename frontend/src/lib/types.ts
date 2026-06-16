@@ -9,6 +9,7 @@
 
 export interface IngestRequest {
   url: string;
+  bot_id: string;
   limit?: number;
 }
 
@@ -20,8 +21,16 @@ export interface IngestResponse {
   message: string;
 }
 
+export interface Bot {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+}
+
 export interface CrawlJob {
   id: string;
+  bot_id: string;
   url: string;
   status: string;
   total_pages: number;
@@ -37,6 +46,7 @@ export interface ChatMessage {
 
 export interface ChatRequest {
   question: string;
+  bot_id: string;
   history: ChatMessage[];
 }
 

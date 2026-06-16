@@ -14,17 +14,20 @@
 
 import { useRef, useState, useEffect } from "react";
 import { sendChatMessage } from "@/lib/api";
-import type { ChatMessage, SourceChunk } from "@/lib/types";
+import type { ChatMessage, SourceChunk, CrawlJob } from "@/lib/types";
 import MessageBubble from "./MessageBubble";
 
-// A message as stored in local state — extends the backend type
-// with an optional sources array for assistant messages.
 interface LocalMessage extends ChatMessage {
   sources?: SourceChunk[];
 }
 
-export default function ChatInterface() {
-  const [messages, setMessages] = useState<LocalMessage[]>([]);
+interface Props {
+  activeBot?: CrawlJob | null;
+}
+
+export default function ChatInterface({ activeBot }: Props) {
+  // Store chat history separately for each bot using its ID as the key
+  const [histories, setHistories] = useState<Record<string, LocalMessage[]>>({});
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,38 +35,58 @@ export default function ChatInterface() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to the bottom whenever messages update
+  const currentMessages = activeBot ? (histories[activeBot.id] || []) : [];
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [currentMessages, loading]);
+
+  // Focus input when bot changes
+  useEffect(() => {
+    if (activeBot && !loading) {
+      inputRef.current?.focus();
+    }
+    setError(null);
+  }, [activeBot]);
 
   async function handleSend() {
     const question = input.trim();
-    if (!question || loading) return;
+    if (!question || loading || !activeBot) return;
 
-    // Immediately show the user's message
     const userMessage: LocalMessage = { role: "user", content: question };
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
+    const updatedMessages = [...currentMessages, userMessage];
+    
+    setHistories(prev => ({
+      ...prev,
+      [activeBot.id]: updatedMessages
+    }));
+    
     setInput("");
     setError(null);
     setLoading(true);
 
     try {
-      // Build history for the API — only user/assistant turns, no sources
       const history: ChatMessage[] = updatedMessages.map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      const response = await sendChatMessage({ question, history });
+      const response = await sendChatMessage({ 
+        question, 
+        bot_id: activeBot.id,
+        history 
+      });
 
       const assistantMessage: LocalMessage = {
         role: "assistant",
         content: response.answer,
         sources: response.sources,
       };
-      setMessages((prev) => [...prev, assistantMessage]);
+      
+      setHistories(prev => ({
+        ...prev,
+        [activeBot.id]: [...(prev[activeBot.id] || []), assistantMessage]
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -73,7 +96,6 @@ export default function ChatInterface() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Send on Enter (without Shift — Shift+Enter adds a newline)
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -81,26 +103,39 @@ export default function ChatInterface() {
   }
 
   function handleClear() {
-    setMessages([]);
+    if (!activeBot) return;
+    setHistories(prev => ({ ...prev, [activeBot.id]: [] }));
     setError(null);
     inputRef.current?.focus();
   }
 
-  const isEmpty = messages.length === 0;
+  if (!activeBot) {
+    return (
+      <section className="chat chat--unselected">
+        <div className="chat__empty" style={{ margin: "auto", textAlign: "center" }}>
+          <p className="chat__empty-icon" aria-hidden="true" style={{ fontSize: "3rem" }}>🤖</p>
+          <p className="chat__empty-title" style={{ fontSize: "1.5rem", marginTop: "1rem" }}>Select a Bot</p>
+          <p className="chat__empty-hint" style={{ color: "#a1a1aa", marginTop: "0.5rem" }}>
+            Click "Chat" on any ingested website in the left panel to start a conversation.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  const isEmpty = currentMessages.length === 0;
 
   return (
     <section
       className="chat"
       id="chat"
-      aria-label="Chat with your crawled content"
+      aria-label={`Chat with ${activeBot.name}`}
     >
-      {/* Message list */}
       <div className="chat__messages" role="log" aria-live="polite">
-        {/* Header (scrolls with messages) */}
         <div className="chat__header">
           <div>
-            <p className="chat__eyebrow">Step 2</p>
-            <h2 className="chat__title">Ask a Question</h2>
+            <p className="chat__eyebrow">Chatting with bot:</p>
+            <h2 className="chat__title" style={{ fontSize: "1.2rem", wordBreak: "break-all" }}>{activeBot.name}</h2>
             <p className="chat__subtitle">
               Powered by Groq · llama-3.3-70b-versatile
             </p>
@@ -119,14 +154,14 @@ export default function ChatInterface() {
         {isEmpty && !loading && (
           <div className="chat__empty">
             <p className="chat__empty-icon" aria-hidden="true">💬</p>
-            <p className="chat__empty-title">Start a conversation</p>
+            <p className="chat__empty-title">Say hello!</p>
             <p className="chat__empty-hint">
-              Ingest a website first, then ask anything about its content.
+              Ask any question about the content {activeBot.name} knows.
             </p>
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {currentMessages.map((msg, i) => (
           <MessageBubble
             key={i}
             message={msg}
@@ -148,17 +183,15 @@ export default function ChatInterface() {
           </div>
         )}
 
-        {/* Scroll anchor */}
         <div ref={bottomRef} aria-hidden="true" />
       </div>
 
-      {/* Input area */}
       <div className="chat__input-area">
         <textarea
           ref={inputRef}
           id="chat-input"
           className="chat__textarea"
-          placeholder="Ask anything about the ingested websites…"
+          placeholder={`Ask about ${activeBot.name}…`}
           rows={2}
           value={input}
           onChange={(e) => setInput(e.target.value)}

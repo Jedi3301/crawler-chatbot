@@ -19,10 +19,12 @@ class ChatRequest(BaseModel):
 
     Attributes:
         question: The user's question.
+        bot_id:   The specific website/bot to query (the crawl_job_id).
         history:  Previous messages in this conversation (for context).
                   Send an empty list for a fresh conversation.
     """
     question: str = Field(..., min_length=1, examples=["What does this website do?"])
+    bot_id: str = Field(..., description="The ID of the crawl job to scope the search to.")
     history: list[ChatMessage] = Field(
         default_factory=list,
         description="Conversation history — previous user/assistant turns.",

@@ -75,18 +75,19 @@ def ingest_website(body: IngestRequest) -> IngestResponse:
     # ── Step 2 & 3: Chunk + Embed + Upsert to Pinecone ────────────── #
     total_chunks = 0
     page_dicts = []
+    
+    import uuid
+    job_id = str(uuid.uuid4())
 
     try:
         for page in crawl_result.pages:
             chunks_with_vectors = embedding_service.chunk_and_embed(page.content)
             if chunks_with_vectors:
-                # We need a crawl_job_id for metadata, but we haven't saved
-                # to Supabase yet. We use the URL as a temporary namespace key.
-                # The actual UUID is attached after the DB insert below.
                 upserted = vector_service.upsert_chunks(
                     chunks_with_vectors=chunks_with_vectors,
                     page_url=page.url,
-                    crawl_job_id="pending",  # updated after DB save
+                    crawl_job_id=job_id,
+                    namespace=body.bot_id,  # Use bot_id as the namespace!
                 )
                 total_chunks += upserted
 
@@ -108,6 +109,8 @@ def ingest_website(body: IngestRequest) -> IngestResponse:
         crawl_job_id = db_service.save_crawl_job(
             url=url,
             total_pages=crawl_result.total_pages,
+            job_id=job_id,
+            bot_id=body.bot_id,
         )
         db_service.save_pages(crawl_job_id=crawl_job_id, pages=page_dicts)
     except DatabaseError as exc:
@@ -131,19 +134,3 @@ def ingest_website(body: IngestRequest) -> IngestResponse:
             f"({total_chunks} chunks stored in Pinecone)."
         ),
     )
-
-
-@router.get(
-    "/history",
-    summary="List previously crawled websites",
-    description="Returns all crawl jobs stored in Supabase, newest first.",
-)
-def get_crawl_history() -> list[dict]:
-    """Returns the list of all crawl jobs from Supabase."""
-    try:
-        return db_service.list_crawl_jobs()
-    except DatabaseError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        )
