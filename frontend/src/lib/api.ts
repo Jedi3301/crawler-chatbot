@@ -17,7 +17,7 @@ import type {
   Bot,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // -------------------------------------------------------------------------- //
 //  Generic helper — wraps fetch with error handling
@@ -54,6 +54,13 @@ async function apiFetch<T>(
 export async function createBot(name: string, description?: string): Promise<Bot> {
   return apiFetch<Bot>("/api/v1/bots", {
     method: "POST",
+    body: JSON.stringify({ name, description }),
+  });
+}
+
+export async function updateBot(botId: string, name?: string, description?: string): Promise<Bot> {
+  return apiFetch<Bot>(`/api/v1/bots/${botId}`, {
+    method: "PATCH",
     body: JSON.stringify({ name, description }),
   });
 }

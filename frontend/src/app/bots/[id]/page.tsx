@@ -8,6 +8,7 @@ import type { Bot } from "@/lib/types";
 import GlobalNav from "@/components/layout/GlobalNav";
 import UrlIngester from "@/components/crawl/UrlIngester";
 import ChatInterface from "@/components/chat/ChatInterface";
+import EditBotModal from "@/components/bots/EditBotModal";
 import { getBotKnowledge } from "@/lib/api";
 import type { CrawlJob } from "@/lib/types";
 
@@ -21,6 +22,7 @@ export default function BotPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -45,6 +47,11 @@ export default function BotPage() {
   }, [botId, refreshTick]);
 
   function handleIngestComplete() {
+    setRefreshTick((t) => t + 1);
+  }
+
+  function handleEditSuccess() {
+    setIsEditing(false);
     setRefreshTick((t) => t + 1);
   }
 
@@ -83,9 +90,17 @@ export default function BotPage() {
       <main className="split-screen">
         {/* ── Left: Bot Studio / Knowledge ───────────────────────────────── */}
         <div className="split-screen__left" style={{ overflowY: 'auto' }}>
-          <div style={{ marginBottom: '2rem' }}>
-            <h1 style={{ margin: '0 0 8px 0', fontSize: '2rem' }}>{bot.name}</h1>
-            <p style={{ margin: '0', color: '#666' }}>{bot.description || "Manage what this bot knows."}</p>
+          <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h1 style={{ margin: '0 0 8px 0', fontSize: '2rem' }}>{bot.name}</h1>
+              <p style={{ margin: '0', color: '#666' }}>{bot.description || "Manage what this bot knows."}</p>
+            </div>
+            <button 
+              onClick={() => setIsEditing(true)}
+              style={{ padding: '6px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer' }}
+            >
+              Edit
+            </button>
           </div>
 
           <UrlIngester botId={bot.id} onIngestComplete={handleIngestComplete} />
@@ -131,6 +146,14 @@ export default function BotPage() {
           <ChatInterface activeBot={bot} />
         </div>
       </main>
+
+      {isEditing && (
+        <EditBotModal 
+          bot={bot}
+          onClose={() => setIsEditing(false)}
+          onSuccess={handleEditSuccess}
+        />
+      )}
     </>
   );
 }

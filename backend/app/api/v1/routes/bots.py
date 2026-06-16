@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException, status
 
-from app.schemas.bots import BotCreate, BotResponse
+from app.schemas.bots import BotCreate, BotUpdate, BotResponse
 from app.services import db_service
 from app.core.exceptions import DatabaseError
 
@@ -51,6 +51,26 @@ def get_bot(bot_id: str) -> BotResponse:
     """Returns a specific bot."""
     try:
         record = db_service.get_bot(bot_id)
+        return BotResponse(**record)
+    except DatabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+
+@router.patch(
+    "/{bot_id}",
+    response_model=BotResponse,
+    summary="Update a specific bot",
+)
+def update_bot(bot_id: str, body: BotUpdate) -> BotResponse:
+    """Updates a bot's details."""
+    try:
+        record = db_service.update_bot(
+            bot_id=bot_id, 
+            name=body.name, 
+            description=body.description
+        )
         return BotResponse(**record)
     except DatabaseError as exc:
         raise HTTPException(

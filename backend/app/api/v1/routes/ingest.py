@@ -30,107 +30,112 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ingest", tags=["Ingest"])
 
 
+import json
+from fastapi.responses import StreamingResponse
+
 @router.post(
     "/ingest",
-    response_model=IngestResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Crawl a website and store its content as embeddings",
+    summary="Crawl a website and store its content as embeddings (SSE Stream)",
     description=(
-        "Runs the full pipeline:\n"
-        "1. Crawl the site with Firecrawl.\n"
-        "2. Split each page into text chunks.\n"
-        "3. Embed chunks with `all-MiniLM-L6-v2`.\n"
-        "4. Upsert vectors + metadata into Pinecone.\n"
-        "5. Save the crawl job record in Supabase.\n\n"
-        "After this, the site's content is ready to be queried via `/chat/message`."
+        "Runs the full pipeline, returning real-time progress via Server-Sent Events.\n"
+        "Yields JSON objects in the `data: {...}` format with keys: status, progress, error, done, result."
     ),
 )
-def ingest_website(body: IngestRequest) -> IngestResponse:
-    """Orchestrates the crawl → chunk → embed → store pipeline."""
-    url = str(body.url)
-
-    # ── Step 1: Crawl ──────────────────────────────────────────────── #
-    try:
-        crawl_result = crawler_service.crawl_website(
-            url=url,
-            limit=body.limit,
-            format="markdown",
-        )
-    except CrawlJobFailedError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Crawl job failed ({exc.status}) for: {exc.url}",
-        )
-    except CrawlEmptyResultError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No pages found at '{exc.url}'. The site may be blocking crawlers.",
-        )
-    except FirecrawlClientError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        )
-
-    # ── Step 2 & 3: Chunk + Embed + Upsert to Pinecone ────────────── #
-    total_chunks = 0
-    page_dicts = []
+def ingest_website(body: IngestRequest):
+    """Orchestrates the crawl → chunk → embed → store pipeline, streaming progress."""
     
-    import uuid
-    job_id = str(uuid.uuid4())
+    def event_stream():
+        url = str(body.url)
+        
+        def emit(status_msg: str, progress_val: int, is_error: bool = False, is_done: bool = False, result: dict = None):
+            data = {
+                "status": status_msg,
+                "progress": progress_val,
+                "error": is_error,
+                "done": is_done,
+                "result": result
+            }
+            return f"data: {json.dumps(data)}\n\n"
 
-    try:
-        for page in crawl_result.pages:
-            chunks_with_vectors = embedding_service.chunk_and_embed(page.content)
-            if chunks_with_vectors:
-                upserted = vector_service.upsert_chunks(
-                    chunks_with_vectors=chunks_with_vectors,
-                    page_url=page.url,
-                    crawl_job_id=job_id,
-                    namespace=body.bot_id,  # Use bot_id as the namespace!
-                )
-                total_chunks += upserted
+        yield emit("Starting crawler via Firecrawl...", 5)
+        
+        # ── Step 1: Crawl ──────────────────────────────────────────────── #
+        try:
+            crawl_result = crawler_service.crawl_website(
+                url=url,
+                limit=body.limit,
+                format="markdown",
+            )
+        except CrawlJobFailedError as exc:
+            yield emit(f"Crawl job failed ({exc.status}) for: {exc.url}", 100, is_error=True)
+            return
+        except CrawlEmptyResultError as exc:
+            yield emit(f"No pages found at '{exc.url}'. The site may be blocking crawlers.", 100, is_error=True)
+            return
+        except FirecrawlClientError as exc:
+            yield emit(f"Firecrawl Error: {str(exc)}", 100, is_error=True)
+            return
+        except Exception as exc:
+            yield emit(f"Unexpected error during crawl: {str(exc)}", 100, is_error=True)
+            return
 
-            page_dicts.append({"url": page.url, "content": page.content})
+        total_pages = crawl_result.total_pages
+        yield emit(f"Crawl complete. Found {total_pages} pages. Processing...", 30)
 
-    except EmbeddingError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        )
-    except VectorStoreError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        )
+        # ── Step 2 & 3: Chunk + Embed + Upsert to Pinecone ────────────── #
+        total_chunks = 0
+        page_dicts = []
+        
+        import uuid
+        job_id = str(uuid.uuid4())
 
-    # ── Step 4: Save to Supabase ───────────────────────────────────── #
-    try:
-        crawl_job_id = db_service.save_crawl_job(
-            url=url,
-            total_pages=crawl_result.total_pages,
-            job_id=job_id,
-            bot_id=body.bot_id,
-        )
-        db_service.save_pages(crawl_job_id=crawl_job_id, pages=page_dicts)
-    except DatabaseError as exc:
-        # DB failure is non-fatal — vectors are already in Pinecone.
-        # Log it and return a partial success rather than a 500.
-        logger.warning("DB save failed (vectors are stored): %s", exc)
-        crawl_job_id = "db-unavailable"
+        try:
+            for idx, page in enumerate(crawl_result.pages):
+                progress = 30 + int(60 * (idx / max(total_pages, 1)))
+                yield emit(f"Processing page {idx + 1} of {total_pages}...", progress)
+                
+                chunks_with_vectors = embedding_service.chunk_and_embed(page.content)
+                if chunks_with_vectors:
+                    upserted = vector_service.upsert_chunks(
+                        chunks_with_vectors=chunks_with_vectors,
+                        page_url=page.url,
+                        crawl_job_id=job_id,
+                        namespace=body.bot_id,
+                    )
+                    total_chunks += upserted
 
-    logger.info(
-        "Ingest complete | url=%s | pages=%d | chunks=%d",
-        url, crawl_result.total_pages, total_chunks,
-    )
+                page_dicts.append({"url": page.url, "content": page.content})
 
-    return IngestResponse(
-        crawl_job_id=crawl_job_id,
-        url=url,
-        pages_crawled=crawl_result.total_pages,
-        chunks_stored=total_chunks,
-        message=(
-            f"Successfully ingested {crawl_result.total_pages} pages "
-            f"({total_chunks} chunks stored in Pinecone)."
-        ),
-    )
+        except EmbeddingError as exc:
+            yield emit(f"Embedding Error: {str(exc)}", 100, is_error=True)
+            return
+        except VectorStoreError as exc:
+            yield emit(f"Vector Store Error: {str(exc)}", 100, is_error=True)
+            return
+        except Exception as exc:
+            yield emit(f"Unexpected error during processing: {str(exc)}", 100, is_error=True)
+            return
+
+        # ── Step 4: Save to Supabase ───────────────────────────────────── #
+        yield emit("Saving results to database...", 95)
+        try:
+            crawl_job_id = db_service.save_crawl_job(
+                url=url,
+                total_pages=total_pages,
+                job_id=job_id,
+                bot_id=body.bot_id,
+            )
+            db_service.save_pages(crawl_job_id=crawl_job_id, pages=page_dicts)
+        except DatabaseError as exc:
+            logger.warning("DB save failed (vectors are stored): %s", exc)
+            crawl_job_id = "db-unavailable"
+
+        yield emit("Complete!", 100, is_done=True, result={
+            "crawl_job_id": crawl_job_id,
+            "url": url,
+            "pages_crawled": total_pages,
+            "chunks_stored": total_chunks,
+            "message": f"Successfully ingested {total_pages} pages ({total_chunks} chunks)."
+        })
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

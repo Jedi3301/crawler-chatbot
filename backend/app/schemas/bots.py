@@ -5,6 +5,10 @@ class BotCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
 
+class BotUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+
 class BotResponse(BaseModel):
     id: str
     name: str

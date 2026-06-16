@@ -101,6 +101,32 @@ def get_bot(bot_id: str) -> dict:
         logger.exception("Failed to get bot")
         raise DatabaseError(str(exc)) from exc
 
+def update_bot(bot_id: str, name: str | None = None, description: str | None = None) -> dict:
+    """Updates a bot's details."""
+    client = _get_client()
+    data = {}
+    if name is not None:
+        data["name"] = name
+    if description is not None:
+        data["description"] = description
+        
+    if not data:
+        return get_bot(bot_id)
+
+    try:
+        response = (
+            client.table("bots")
+            .update(data)
+            .eq("id", bot_id)
+            .execute()
+        )
+        if not response.data:
+            raise DatabaseError(f"Bot {bot_id} not found")
+        return response.data[0]
+    except Exception as exc:
+        logger.exception("Failed to update bot")
+        raise DatabaseError(str(exc)) from exc
+
 
 # --------------------------------------------------------------------------- #
 #  Crawl job (knowledge) operations

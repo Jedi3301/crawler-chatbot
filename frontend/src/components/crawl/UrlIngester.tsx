@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { ingestWebsite } from "@/lib/api";
+import { API_BASE } from "@/lib/api";
 import type { IngestResponse } from "@/lib/types";
 
 interface Props {
@@ -26,6 +26,8 @@ export default function UrlIngester({ botId, onIngestComplete }: Props) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<IngestResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState("");
+  const [progress, setProgress] = useState(0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,15 +36,68 @@ export default function UrlIngester({ botId, onIngestComplete }: Props) {
     setLoading(true);
     setError(null);
     setResult(null);
+    setStatusMsg("Starting...");
+    setProgress(0);
 
     try {
-      const res = await ingestWebsite({ url: url.trim(), limit, bot_id: botId });
-      setResult(res);
-      onIngestComplete();
+      const res = await fetch(`${API_BASE}/api/v1/ingest/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim(), limit, bot_id: botId })
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder("utf-8");
+
+      if (!reader) {
+        throw new Error("Response body is not readable.");
+      }
+
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process line by line
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ""; // Keep the last incomplete line in the buffer
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.replace("data: ", "");
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.error) {
+                throw new Error(data.status);
+              }
+              setStatusMsg(data.status);
+              setProgress(data.progress);
+              
+              if (data.done) {
+                setResult(data.result);
+                onIngestComplete();
+              }
+            } catch (err) {
+              if (err instanceof Error && err.message !== "Unexpected end of JSON input") {
+                throw err;
+              }
+            }
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unknown error occurred.");
     } finally {
       setLoading(false);
+      setStatusMsg("");
+      setProgress(0);
     }
   }
 
@@ -107,11 +162,21 @@ export default function UrlIngester({ botId, onIngestComplete }: Props) {
         </button>
       </form>
 
-      {/* Loading state */}
+      {/* Loading state with SSE progress */}
       {loading && (
-        <div className="ingester__status" role="status" aria-live="polite">
-          <span className="ingester__spinner" aria-hidden="true" />
-          Crawling and embedding — this may take a minute…
+        <div style={{ marginTop: '24px', backgroundColor: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px', padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
+            <span>{statusMsg || "Initializing..."}</span>
+            <span>{progress}%</span>
+          </div>
+          <div style={{ width: '100%', backgroundColor: '#eee', borderRadius: '4px', overflow: 'hidden', height: '8px' }}>
+            <div style={{ 
+              width: `${progress}%`, 
+              backgroundColor: '#3b82f6', 
+              height: '100%', 
+              transition: 'width 0.3s ease-out' 
+            }} />
+          </div>
         </div>
       )}
 

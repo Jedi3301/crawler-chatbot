@@ -14,7 +14,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { sendChatMessage } from "@/lib/api";
-import type { ChatMessage, SourceChunk, CrawlJob } from "@/lib/types";
+import type { ChatMessage, SourceChunk, Bot } from "@/lib/types";
 import MessageBubble from "./MessageBubble";
 
 interface LocalMessage extends ChatMessage {
@@ -22,7 +22,7 @@ interface LocalMessage extends ChatMessage {
 }
 
 interface Props {
-  activeBot?: CrawlJob | null;
+  activeBot?: Bot | null;
 }
 
 export default function ChatInterface({ activeBot }: Props) {
